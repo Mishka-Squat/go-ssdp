@@ -55,7 +55,7 @@ func Advertise(st, usn string, location any, server string, maxAge int, opts ...
 	if err != nil {
 		return nil, err
 	}
-	conn, err := multicast.Listen(cfg.laddrResolver(), cfg.multicastConfig.options()...)
+	conn, err := multicast.Listen(cfg.laddrResolver(), cfg.raddrResolver(), cfg.multicastConfig.options()...)
 	if err != nil {
 		return nil, err
 	}
