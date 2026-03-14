@@ -49,10 +49,9 @@ func (m *Monitor) Start() error {
 func (m *Monitor) serve() error {
 	// TODO: update listening interfaces of m.conn
 	err := m.conn.ReadPackets(0, func(addr net.Addr, data []byte) error {
-		msg := make([]byte, len(data))
-		copy(msg, data)
-		go m.handleRaw(addr, msg)
-		return nil
+		//msg := make([]byte, len(data))
+		//copy(msg, data)
+		return m.handleRaw(addr, data)
 	})
 	if err != nil && !errors.Is(err, io.EOF) {
 		return err
