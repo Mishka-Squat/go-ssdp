@@ -26,15 +26,20 @@ type Advertiser struct {
 	server  string
 	maxAge  int
 
-	conn *multicast.Conn
-	ch   chan *message
-	wg   sync.WaitGroup
-	wgS  sync.WaitGroup
+	conn     *multicast.Conn
+	ch       chan *message
+	wg       sync.WaitGroup
+	wgS      sync.WaitGroup
+	services map[string]struct{}
 
 	// addHost is an optional flag to add HOST header for M-SEARCH response.
 	// It is to support SmartThings.
 	// See https://github.com/koron/go-ssdp/issues/30 for details
 	addHost bool
+}
+
+func (a *Advertiser) AddService(st string) {
+	a.services[st] = struct{}{}
 }
 
 // Advertise starts advertisement of service.
@@ -54,14 +59,15 @@ func Advertise(st, usn string, location any, server string, maxAge int, opts ...
 	}
 	ssdplog.Printf("SSDP advertise on: %s", conn.LocalAddr().String())
 	a := &Advertiser{
-		st:      st,
-		usn:     usn,
-		locProv: locProv,
-		server:  server,
-		maxAge:  maxAge,
-		conn:    conn,
-		ch:      make(chan *message),
-		addHost: cfg.advertiseConfig.addHost,
+		st:       st,
+		usn:      usn,
+		locProv:  locProv,
+		server:   server,
+		maxAge:   maxAge,
+		conn:     conn,
+		ch:       make(chan *message),
+		services: map[string]struct{}{},
+		addHost:  cfg.advertiseConfig.addHost,
 	}
 	a.wg.Add(2)
 	a.wgS.Add(1)
@@ -100,6 +106,7 @@ func (a *Advertiser) sendMain() {
 	}
 }
 
+// Thats only for reply on M-SEARCH, handling done in Monitor
 func (a *Advertiser) handleRaw(from net.Addr, raw []byte) error {
 	if !bytes.HasPrefix(raw, []byte("M-SEARCH ")) {
 		// unexpected method.
@@ -116,10 +123,13 @@ func (a *Advertiser) handleRaw(from net.Addr, raw []byte) error {
 	if man != `"ssdp:discover"` {
 		return fmt.Errorf("unexpected MAN: %s", man)
 	}
-	if st != All && st != RootDevice && st != a.st {
+	if (st != All && st != RootDevice && st != a.st) || (len(a.services) > 0) {
 		// skip when ST is not matched/expected.
-		return nil
+		if _, ok := a.services[st]; !ok {
+			return nil
+		}
 	}
+
 	ssdplog.Printf("received M-SEARCH MAN=%s ST=%s from %s", man, st, from.String())
 	// build and send a response.
 	var host string
@@ -132,6 +142,7 @@ func (a *Advertiser) handleRaw(from net.Addr, raw []byte) error {
 	}
 	msg := buildOK(a.st, a.usn, a.locProv.Location(from, nil), a.server, a.maxAge, host)
 	a.ch <- &message{to: from, data: multicast.BytesDataProvider(msg)}
+
 	return nil
 }
 

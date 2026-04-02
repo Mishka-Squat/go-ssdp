@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/koron/go-ssdp/internal/multicast"
@@ -16,9 +17,9 @@ import (
 
 // Monitor monitors SSDP's alive and byebye messages.
 type Monitor struct {
-	Alive  AliveHandler
-	Bye    ByeHandler
-	Search SearchHandler
+	OnAlive  AliveHandler
+	OnBye    ByeHandler
+	OnSearch SearchHandler
 
 	Options []Option
 
@@ -43,6 +44,43 @@ func (m *Monitor) Start() error {
 		m.serve()
 		m.wg.Done()
 	}()
+	return nil
+}
+
+func (m *Monitor) Search(searchType string, waitSec int, opts ...Option) error {
+	cfg, err := opts2config(opts)
+	if err != nil {
+		return err
+	}
+	// dial multicast UDP packet.
+	conn, err := multicast.Listen(&multicast.AddrResolver{Addr: ""}, cfg.multicastConfig.options()...)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	ssdplog.Printf("search on %s", conn.LocalAddr().String())
+
+	// send request.
+	addr, err := multicast.SendAddr()
+	if err != nil {
+		return err
+	}
+	msg, err := buildSearch(addr, searchType, waitSec)
+	if err != nil {
+		return err
+	}
+	if _, err := conn.WriteTo(multicast.BytesDataProvider(msg), addr); err != nil {
+		return err
+	}
+
+	err = conn.ReadPackets(0, func(addr net.Addr, raw []byte) error {
+		return m.handleSeqrchResponse(addr, raw)
+	})
+
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+
 	return nil
 }
 
@@ -80,31 +118,35 @@ func (m *Monitor) handleNotify(addr net.Addr, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	switch nts := req.Header.Get("NTS"); nts {
+
+	header := req.Header
+	method := req.Method
+
+	switch nts := header.Get("NTS"); nts {
 	case "ssdp:alive":
-		if req.Method != "NOTIFY" {
-			return fmt.Errorf("unexpected method for %q: %s", "ssdp:alive", req.Method)
+		if method != "NOTIFY" {
+			return fmt.Errorf("unexpected method for %q: %s", "ssdp:alive", method)
 		}
-		if h := m.Alive; h != nil {
+		if h := m.OnAlive; h != nil {
 			h(&AliveMessage{
 				From:      addr,
-				Type:      req.Header.Get("NT"),
-				USN:       req.Header.Get("USN"),
-				Location:  req.Header.Get("LOCATION"),
-				Server:    req.Header.Get("SERVER"),
-				rawHeader: req.Header,
+				Type:      header.Get("NT"),
+				USN:       header.Get("USN"),
+				Location:  header.Get("LOCATION"),
+				Server:    header.Get("SERVER"),
+				rawHeader: header,
 			})
 		}
 	case "ssdp:byebye":
-		if req.Method != "NOTIFY" {
-			return fmt.Errorf("unexpected method for %q: %s", "ssdp:byebye", req.Method)
+		if method != "NOTIFY" {
+			return fmt.Errorf("unexpected method for %q: %s", "ssdp:byebye", method)
 		}
-		if h := m.Bye; h != nil {
+		if h := m.OnBye; h != nil {
 			h(&ByeMessage{
 				From:      addr,
-				Type:      req.Header.Get("NT"),
-				USN:       req.Header.Get("USN"),
-				rawHeader: req.Header,
+				Type:      header.Get("NT"),
+				USN:       header.Get("USN"),
+				rawHeader: header,
 			})
 		}
 	default:
@@ -122,13 +164,35 @@ func (m *Monitor) handleSearch(addr net.Addr, raw []byte) error {
 	if man != `"ssdp:discover"` {
 		return fmt.Errorf("unexpected MAN: %s", man)
 	}
-	if h := m.Search; h != nil {
+	if h := m.OnSearch; h != nil {
 		h(&SearchMessage{
 			From:      addr,
 			Type:      req.Header.Get("ST"),
 			rawHeader: req.Header,
 		})
 	}
+	return nil
+}
+
+func (m *Monitor) handleSeqrchResponse(addr net.Addr, raw []byte) error {
+	req, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(raw)), nil)
+	if err != nil {
+		return err
+	}
+
+	header := req.Header
+
+	if h := m.OnAlive; h != nil {
+		h(&AliveMessage{
+			From:      addr,
+			Type:      header.Get("ST"),
+			USN:       header.Get("USN"),
+			Location:  header.Get("LOCATION"),
+			Server:    header.Get("SERVER"),
+			rawHeader: header,
+		})
+	}
+
 	return nil
 }
 
@@ -213,6 +277,15 @@ type SearchMessage struct {
 // Header returns all properties in search message.
 func (s *SearchMessage) Header() http.Header {
 	return s.rawHeader
+}
+
+func (s *SearchMessage) Mx() int {
+	mx, err := strconv.Atoi(s.rawHeader.Get("MX"))
+	if err != nil {
+		return 0
+	}
+
+	return mx
 }
 
 // SearchHandler is handler of Search message.

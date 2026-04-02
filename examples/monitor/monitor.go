@@ -35,10 +35,10 @@ func main() {
 	}
 
 	m := &ssdp.Monitor{
-		Alive:   onAlive,
-		Bye:     onBye,
-		Search:  onSearch,
-		Options: opts,
+		OnAlive:  onAlive,
+		OnBye:    onBye,
+		OnSearch: onSearch,
+		Options:  opts,
 	}
 	if err := m.Start(); err != nil {
 		log.Fatal(err)
