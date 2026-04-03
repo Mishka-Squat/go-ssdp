@@ -5,7 +5,8 @@ package ssdplog
 
 import "log"
 
-var LoggerProvider = func() *log.Logger { return nil }
+//var LoggerProvider = func() *log.Logger { return nil }
+var LoggerProvider = func() *log.Logger { return log.Default() }
 
 func Printf(s string, a ...any) {
 	if p := LoggerProvider; p != nil {
