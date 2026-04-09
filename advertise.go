@@ -102,6 +102,7 @@ func (a *Advertiser) sendMain() {
 		_, err := a.conn.WriteTo(msg.data, msg.to)
 		if err != nil {
 			ssdplog.Printf("failed to send: %s", err)
+			fmt.Printf("failed to send: %s", err)
 		}
 	}
 }
