@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/koron/go-ssdp/internal/multicast"
 	"github.com/koron/go-ssdp/internal/ssdplog"
@@ -53,7 +54,7 @@ func (m *Monitor) Search(searchType string, waitSec int, opts ...Option) error {
 		return err
 	}
 	// dial multicast UDP packet.
-	conn, err := multicast.Listen(&multicast.AddrResolver{Addr: ""}, cfg.multicastConfig.options()...)
+	conn, err := multicast.Listen(multicast.NewResolver(""), cfg.raddrResolver(), cfg.multicastConfig.options()...)
 	if err != nil {
 		return err
 	}
@@ -61,7 +62,7 @@ func (m *Monitor) Search(searchType string, waitSec int, opts ...Option) error {
 	ssdplog.Printf("search on %s", conn.LocalAddr().String())
 
 	// send request.
-	addr, err := multicast.SendAddr()
+	addr, err := cfg.raddrResolver().Resolve()
 	if err != nil {
 		return err
 	}
@@ -73,7 +74,8 @@ func (m *Monitor) Search(searchType string, waitSec int, opts ...Option) error {
 		return err
 	}
 
-	err = conn.ReadPackets(0, func(addr net.Addr, raw []byte) error {
+	d := time.Second * time.Duration(waitSec)
+	err = conn.ReadPackets(d, func(addr net.Addr, raw []byte) error {
 		return m.handleSeqrchResponse(addr, raw)
 	})
 

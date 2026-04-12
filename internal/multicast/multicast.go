@@ -153,7 +153,8 @@ func (b BytesDataProvider) Bytes(ifi *net.Interface) []byte {
 func (mc *Conn) WriteTo(dataProv DataProvider, to net.Addr) (int, error) {
 	// Send a multicast message directory when recipient "to" address is not multicast.
 	if uaddr, ok := to.(*net.UDPAddr); ok && !uaddr.IP.IsMulticast() {
-		return mc.writeToIfi(dataProv, to, nil)
+		return mc.pconn.WriteTo(dataProv.Bytes(nil), nil, to)
+		//return mc.writeToIfi(dataProv, to, nil)
 	}
 	if len(mc.ifps) == 0 {
 		return mc.writeToIfi(dataProv, to, nil)
