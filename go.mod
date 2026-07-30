@@ -4,10 +4,8 @@ go 1.26
 
 require (
 	github.com/google/go-cmp v0.7.0
-	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
-	golang.org/x/net v0.53.0
+	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743
+	golang.org/x/net v0.57.0
 )
 
-require (
-	golang.org/x/sys v0.43.0 // indirect
-)
+require golang.org/x/sys v0.47.0 // indirect
