@@ -4,8 +4,8 @@ go 1.27
 
 require (
 	github.com/google/go-cmp v0.7.0
-	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743
-	golang.org/x/net v0.57.0
+	golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa
+	golang.org/x/net v0.58.0
 )
 
 require (
